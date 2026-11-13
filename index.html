@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>英単語クイズ Master</title>
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --bg: #f3f4f6;
+      --card: #ffffff;
+      --text: #1f2937;
+      --correct: #10b981;
+      --wrong: #ef4444;
+      --warning: #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 1rem; display: flex; justify-content: center; min-height: 100vh; }
+    .container { background: var(--card); border-radius: 12px; width: 100%; max-width: 500px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); height: fit-content; }
+    h1 { font-size: 1.4rem; text-align: center; color: var(--primary); margin-bottom: 1rem; }
+    .btn { background: var(--primary); color: white; border: none; padding: 0.8rem; border-radius: 8px; width: 100%; font-size: 1rem; font-weight: bold; cursor: pointer; margin-top: 0.5rem; }
+    .btn:hover { background: var(--primary-hover); }
+    .btn-secondary { background: #6b7280; }
+    .btn-secondary:hover { background: #4b5563; }
+    .hidden { display: none !important; }
+    
+    /* Config */
+    .field { margin-bottom: 1rem; }
+    label { display: block; font-size: 0.9rem; font-weight: bold; margin-bottom: 0.3rem; }
+    select, input { width: 100%; padding: 0.6rem; border-radius: 6px; border: 1px solid #ccc; font-size: 1rem; }
+    
+    /* Quiz */
+    .status-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem; font-size: 0.85rem; color: #6b7280; }
+    .timer { font-size: 1.1rem; font-weight: bold; color: var(--wrong); }
+    .word-card { text-align: center; margin: 1rem 0; padding: 1rem; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; position: relative; }
+    .word { font-size: 2rem; font-weight: bold; }
+    .unit-badge { font-size: 0.8rem; background: #e0e7ff; color: var(--primary); padding: 2px 8px; border-radius: 10px; }
+    .mistake-alert { background: #fef3c7; color: #92400e; font-size: 0.85rem; padding: 0.4rem; border-radius: 6px; margin-top: 0.5rem; font-weight: bold; }
+    
+    .options { display: flex; flex-direction: column; gap: 0.6rem; }
+    .opt-btn { padding: 0.8rem; border: 2px solid #e5e7eb; border-radius: 8px; background: white; text-align: left; font-size: 0.95rem; cursor: pointer; }
+    .opt-btn.correct { background: #d1fae5; border-color: var(--correct); color: #065f46; }
+    .opt-btn.wrong { background: #fee2e2; border-color: var(--wrong); color: #991b1b; }
+
+    /* Stats */
+    .history-list { max-height: 250px; overflow-y: auto; margin: 1rem 0; font-size: 0.9rem; }
+    .history-item { padding: 0.5rem; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; }
+    .wrong-tag { color: var(--wrong); font-weight: bold; }
+  </style>
+<meta name="theme-color" content="#4f46e5">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icon-192.png">
+</head>
+<body>
+
+<div class="container">
+  <!-- Top / Settings -->
+  <div id="screen-top">
+    <h1>英単語クイズ (全172語)</h1>
+    <div class="field">
+      <label>出題モード</label>
+      <select id="mode-select">
+        <option value="all">全単語からランダム</option>
+        <option value="weak">苦手（前回ミスした単語）のみ</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>1問あたりの制限時間</label>
+      <select id="timer-select">
+        <option value="5">5秒 (超スピード)</option>
+        <option value="10" selected>10秒 (標準)</option>
+        <option value="15">15秒 (じっくり)</option>
+        <option value="0">制限時間なし</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>問題数</label>
+      <select id="count-select">
+        <option value="10">10問</option>
+        <option value="20">20問</option>
+        <option value="all">全問</option>
+      </select>
+    </div>
+    <button class="btn" onclick="startQuiz()">クイズスタート</button>
+    <button class="btn btn-secondary" onclick="showHistory()" style="margin-top:0.8rem;">苦手単語リストを見る</button>
+  </div>
+
+  <!-- Quiz -->
+  <div id="screen-quiz" class="hidden">
+    <div class="status-bar">
+      <span id="q-progress">第 1 問</span>
+      <span id="q-timer" class="timer">10s</span>
+    </div>
+    <div class="word-card">
+      <span id="q-unit" class="unit-badge">Unit 116</span>
+      <div id="q-word" class="word">word</div>
+      <div id="q-alert" class="mistake-alert hidden">⚠️ 前回間違えた単語です！</div>
+    </div>
+    <div id="q-options" class="options"></div>
+  </div>
+
+  <!-- Result -->
+  <div id="screen-result" class="hidden" style="text-align: center;">
+    <h1>結果発表</h1>
+    <p style="font-size: 2rem; font-weight: bold; color: var(--primary); margin: 1rem 0;" id="res-score">0 / 10</p>
+    <div id="res-mistakes-box" style="text-align: left; margin-bottom: 1rem;"></div>
+    <button class="btn" onclick="backToTop()">メニューに戻る</button>
+  </div>
+
+  <!-- History -->
+  <div id="screen-history" class="hidden">
+    <h1>苦手・記録リスト</h1>
+    <p style="font-size:0.85rem; color:#6b7280; margin-bottom:0.5rem;">※端末内に記録されています</p>
+    <div id="history-content" class="history-list"></div>
+    <button class="btn btn-secondary" onclick="clearHistory()" style="margin-bottom:0.5rem; background:#ef4444;">記録をリセット</button>
+    <button class="btn" onclick="backToTop()">戻る</button>
+  </div>
+</div>
+
+<script>
+const vocabulary = [
+  { word: "equator", meaning: "赤道", unit: 116 },
+  { word: "latitude", meaning: "緯度", unit: 116 },
+  { word: "longitude", meaning: "経度", unit: 116 },
+  { word: "horizon", meaning: "地平線、水平線", unit: 116 },
+  { word: "gravity", meaning: "重力、引力", unit: 116 },
+  { word: "peninsula", meaning: "半島", unit: 116 },
+  { word: "bay", meaning: "湾", unit: 116 },
+  { word: "shore", meaning: "岸、海岸", unit: 116 },
+  { word: "marine", meaning: "海の、海の生物", unit: 116 },
+  { word: "tide", meaning: "潮の満ち引き、潮流", unit: 116 },
+  { word: "current", meaning: "（水・空気の）流れ、電流、現在の", unit: 116 },
+  { word: "stream", meaning: "小川、流れ", unit: 116 },
+  { word: "northern", meaning: "北の、北部の", unit: 117 },
+  { word: "hemisphere", meaning: "半球", unit: 117 },
+  { word: "Mars", meaning: "火星", unit: 117 },
+  { word: "probe", meaning: "探査機、探る", unit: 117 },
+  { word: "mosquito", meaning: "蚊", unit: 117 },
+  { word: "bite", meaning: "噛む、刺す", unit: 117 },
+  { word: "bee", meaning: "ハチ", unit: 117 },
+  { word: "sting", meaning: "（針で）刺す、刺し傷", unit: 117 },
+  { word: "underestimate", meaning: "過小評価する", unit: 117 },
+  { word: "underlie", meaning: "の基礎にある、下に横たわる", unit: 117 },
+  { word: "planet", meaning: "惑星", unit: 118 },
+  { word: "universe", meaning: "宇宙、全般", unit: 118 },
+  { word: "vacuum", meaning: "真空、掃除機", unit: 118 },
+  { word: "satellite", meaning: "衛星、人工衛星", unit: 118 },
+  { word: "rotate", meaning: "回転する、交代でする", unit: 118 },
+  { word: "orbit", meaning: "軌道、軌道を回る", unit: 118 },
+  { word: "alien", meaning: "外国人、宇宙人、異質な", unit: 118 },
+  { word: "astronaut", meaning: "宇宙飛行士", unit: 118 },
+  { word: "eclipse", meaning: "日食、月食、影を薄くする", unit: 118 },
+  { word: "asteroid", meaning: "小惑星", unit: 118 },
+  { word: "perceive", meaning: "知覚する、気づく", unit: 118 },
+  { word: "conceive", meaning: "思いつく、想像する", unit: 118 },
+  { word: "circle", meaning: "円、円周、仲間", unit: 119 },
+  { word: "triangle", meaning: "三角形", unit: 119 },
+  { word: "square", meaning: "正方形、広場", unit: 119 },
+  { word: "cube", meaning: "立方体、立方", unit: 119 },
+  { word: "oval", meaning: "楕円（形）、楕円形の", unit: 119 },
+  { word: "rectangular", meaning: "長方形の、直角の", unit: 119 },
+  { word: "parallel", meaning: "平行な、類似した", unit: 119 },
+  { word: "diameter", meaning: "直径", unit: 119 },
+  { word: "vertical", meaning: "垂直の、縦の", unit: 119 },
+  { word: "horizontal", meaning: "水平の、横の", unit: 119 },
+  { word: "opposite", meaning: "反対側の、向かい側の", unit: 119 },
+  { word: "oppose", meaning: "反対する", unit: 119 },
+  { word: "opponent", meaning: "対戦相手、敵", unit: 119 },
+  { word: "solid", meaning: "固体の、しっかりした", unit: 120 },
+  { word: "liquid", meaning: "液体の、液体", unit: 120 },
+  { word: "steam", meaning: "蒸気、スチーム", unit: 120 },
+  { word: "evaporate", meaning: "蒸発する、発散する", unit: 120 },
+  { word: "sensible", meaning: "分別のある、賢明な", unit: 120 },
+  { word: "sensitive", meaning: "敏感な、神経質な", unit: 120 },
+  { word: "imaginary", meaning: "想像上の、架空の", unit: 120 },
+  { word: "imaginative", meaning: "想像力豊かな", unit: 120 },
+  { word: "considerate", meaning: "思いやりのある", unit: 120 },
+  { word: "considerable", meaning: "かなりの、相当な", unit: 120 },
+  { word: "trace", meaning: "跡、足跡、見つけ出す", unit: 120 },
+  { word: "track", meaning: "小道、足跡、追跡する", unit: 120 },
+  { word: "lie in A", meaning: "Aにある、Aに原因がある", unit: 121 },
+  { word: "major in A", meaning: "Aを専攻する", unit: 121 },
+  { word: "specialize in A", meaning: "Aを専門にする", unit: 121 },
+  { word: "correspond to [with] A", meaning: "Aに一致する、Aと文通する", unit: 121 },
+  { word: "die out", meaning: "絶滅する、消えてなくなる", unit: 121 },
+  { word: "leave out A [A out]", meaning: "Aを省く、除外する", unit: 121 },
+  { word: "cross out A [A out]", meaning: "Aを線で消す", unit: 121 },
+  { word: "as follows", meaning: "次の通りである", unit: 121 },
+  { word: "as well", meaning: "〜もまた、同様に", unit: 121 },
+  { word: "as for A", meaning: "Aに関して言えば", unit: 121 },
+  { word: "as usual", meaning: "いつものように", unit: 121 },
+  { word: "insert", meaning: "挿入する", unit: 126 },
+  { word: "delete", meaning: "削除する", unit: 126 },
+  { word: "browse", meaning: "閲覧する、拾い読みする", unit: 126 },
+  { word: "install", meaning: "インストールする、設置する", unit: 126 },
+  { word: "load", meaning: "読み込む、積む、荷物", unit: 126 },
+  { word: "mobile", meaning: "可動式の、携帯用の、モバイル", unit: 126 },
+  { word: "device", meaning: "装置、デバイス", unit: 126 },
+  { word: "laptop", meaning: "ラップトップ型パソコン、ノートPC", unit: 126 },
+  { word: "slightly", meaning: "わずかに、少し", unit: 126 },
+  { word: "largely", meaning: "主に、大いに", unit: 126 },
+  { word: "approximately", meaning: "およそ、約", unit: 126 },
+  { word: "merely", meaning: "単に、〜にすぎない", unit: 126 },
+  { word: "utterly", meaning: "全く、完全に", unit: 126 },
+  { word: "virtual", meaning: "仮想の、実質的な", unit: 127 },
+  { word: "reality", meaning: "現実、現実性", unit: 127 },
+  { word: "artificial", meaning: "人工的な、不自然な", unit: 127 },
+  { word: "intelligence", meaning: "知能、知性、情報", unit: 127 },
+  { word: "numerous", meaning: "多数の、たくさんの", unit: 127 },
+  { word: "enormous", meaning: "莫大な、巨大な", unit: 127 },
+  { word: "tremendous", meaning: "すさまじい、膨大な", unit: 127 },
+  { word: "vast", meaning: "広大な、膨大な", unit: 127 },
+  { word: "massive", meaning: "大規模な、重厚な、巨大な", unit: 127 },
+  { word: "length", meaning: "長さ、期間", unit: 127 },
+  { word: "depth", meaning: "深さ、奥行き", unit: 127 },
+  { word: "height", meaning: "高さ、高所", unit: 127 },
+  { word: "proportion", meaning: "割合、均衡", unit: 128 },
+  { word: "portion", meaning: "部分、分け前、一人前", unit: 128 },
+  { word: "dose", meaning: "（薬の）1回服用量、投与する", unit: 128 },
+  { word: "bunch", meaning: "房、束、群れ", unit: 128 },
+  { word: "medium", meaning: "中間の、媒体、手段", unit: 128 },
+  { word: "criterion", meaning: "基準、尺度（複数形：criteria）", unit: 128 },
+  { word: "analysis", meaning: "分析", unit: 128 },
+  { word: "stimulus", meaning: "刺激、励み", unit: 128 },
+  { word: "phenomenon", meaning: "現象（複数形：phenomena）", unit: 128 },
+  { word: "displace", meaning: "取って代わる、移動させる", unit: 128 },
+  { word: "dissolve", meaning: "溶かす、解散する", unit: 128 },
+  { word: "discard", meaning: "捨てる、処分する", unit: 128 },
+  { word: "distribute", meaning: "配布する、分配する", unit: 129 },
+  { word: "shipment", meaning: "出荷、発送、積荷", unit: 129 },
+  { word: "canal", meaning: "運河、水路", unit: 129 },
+  { word: "expressway", meaning: "高速道路", unit: 129 },
+  { word: "toll", meaning: "通行料、料金", unit: 129 },
+  { word: "transport", meaning: "輸送する、交通機関", unit: 129 },
+  { word: "transfer", meaning: "乗り換える、転勤する、移す", unit: 129 },
+  { word: "transition", meaning: "移行、推移、変化", unit: 129 },
+  { word: "transparent", meaning: "透明な、透き通った", unit: 129 },
+  { word: "permit", meaning: "許可する、許可証", unit: 129 },
+  { word: "transmit", meaning: "送信する、伝える", unit: 129 },
+  { word: "omit", meaning: "省略する、省く", unit: 129 },
+  { word: "aviation", meaning: "航空、飛行", unit: 130 },
+  { word: "aircraft", meaning: "航空機、飛行機", unit: 130 },
+  { word: "aisle", meaning: "通路", unit: 130 },
+  { word: "automobile", meaning: "自動車", unit: 130 },
+  { word: "avenue", meaning: "大通り、街路", unit: 130 },
+  { word: "destination", meaning: "目的地、行き先", unit: 130 },
+  { word: "tourism", meaning: "観光事業、観光", unit: 130 },
+  { word: "congestion", meaning: "混雑、渋滞", unit: 130 },
+  { word: "aspect", meaning: "側面、観点", unit: 130 },
+  { word: "prospect", meaning: "見通し、見込み、期待", unit: 130 },
+  { word: "inspect", meaning: "調査する、検問する", unit: 130 },
+  { word: "suspect", meaning: "疑う、容疑者", unit: 130 },
+  { word: "nod", meaning: "うなずく、うなずき", unit: 131 },
+  { word: "wander", meaning: "歩き回る、さまよう", unit: 131 },
+  { word: "imitate", meaning: "まねる、模倣する", unit: 131 },
+  { word: "anticipate", meaning: "予想する、期待する", unit: 131 },
+  { word: "exaggerate", meaning: "誇張する、大げさに言う", unit: 131 },
+  { word: "negotiate", meaning: "交渉する、取り決める", unit: 131 },
+  { word: "chase", meaning: "追う、追跡する", unit: 131 },
+  { word: "pursue", meaning: "追求する、追う", unit: 131 },
+  { word: "limit", meaning: "制限する、制限", unit: 131 },
+  { word: "restrict", meaning: "制限する、限定する", unit: 131 },
+  { word: "organize", meaning: "組織する、準備する、まとめる", unit: 131 },
+  { word: "arrange", meaning: "手配する、整える、配置する", unit: 131 },
+  { word: "matter", meaning: "事柄、問題、重要である", unit: 132 },
+  { word: "state", meaning: "状態、国家、州、述べる", unit: 132 },
+  { word: "issue", meaning: "問題、発行（物）、出す", unit: 132 },
+  { word: "firm", meaning: "会社、企業、堅い", unit: 132 },
+  { word: "destiny", meaning: "運命、宿命", unit: 132 },
+  { word: "fate", meaning: "運命", unit: 132 },
+  { word: "fortune", meaning: "幸運、財産", unit: 132 },
+  { word: "estate", meaning: "地主の所有地、財産、不動産", unit: 132 },
+  { word: "asset", meaning: "資産、財産、長所", unit: 132 },
+  { word: "sacrifice", meaning: "犠牲にする、犠牲", unit: 133 },
+  { word: "abandon", meaning: "見捨てる、放棄する", unit: 133 },
+  { word: "decay", meaning: "腐敗する、衰退する、虫歯", unit: 133 },
+  { word: "contradict", meaning: "〜と矛盾する、〜に反論する", unit: 133 },
+  { word: "envy", meaning: "〜をねたむ、うらやむ", unit: 133 },
+  { word: "sigh", meaning: "ため息をつく", unit: 133 },
+  { word: "frown", meaning: "眉をひそめる、しかめっ面をする", unit: 133 },
+  { word: "hesitate", meaning: "ためらう、遠慮する", unit: 133 },
+  { word: "compromise", meaning: "妥協する、妥協", unit: 133 },
+  { word: "puzzle", meaning: "〜を困惑させる、パズル", unit: 133 },
+  { word: "offend", meaning: "〜の感情を害する、気分を害させる", unit: 133 },
+  { word: "tease", meaning: "〜をからかう、いじめる", unit: 133 },
+  { word: "tempt", meaning: "〜を誘惑する、その気にさせる", unit: 133 },
+  { word: "affection", meaning: "愛情、愛着", unit: 134 },
+  { word: "gratitude", meaning: "感謝（の気持ち）", unit: 134 },
+  { word: "empathy", meaning: "共感、感情移入", unit: 134 },
+  { word: "conscience", meaning: "良心", unit: 134 },
+  { word: "preference", meaning: "好み、優先", unit: 134 },
+  { word: "grief", meaning: "深い悲しみ", unit: 134 },
+  { word: "insult", meaning: "侮辱、〜を侮辱する", unit: 134 },
+  { word: "hatred", meaning: "憎しみ、憎悪", unit: 134 },
+  { word: "distress", meaning: "苦悩、貧困、〜を苦しめる", unit: 134 },
+  { word: "strain", meaning: "緊張、負担、〜を痛める", unit: 134 },
+  { word: "burden", meaning: "重荷、負担", unit: 134 },
+  { word: "illusion", meaning: "錯覚、思い違い、幻影", unit: 134 },
+  { word: "obsession", meaning: "強迫観念、こだわり、執着", unit: 134 },
+  { word: "grateful", meaning: "感謝している", unit: 135 },
+  { word: "curious", meaning: "好奇心が強い、奇妙な", unit: 135 },
+  { word: "generous", meaning: "寛大な、気前のよい", unit: 135 },
+  { word: "casual", meaning: "形式ばらない、気楽な", unit: 135 },
+  { word: "modest", meaning: "謙虚な、控えめな", unit: 135 },
+  { word: "uneasy", meaning: "不安な、胸騒ぎがする", unit: 135 },
+  { word: "aggressive", meaning: "攻撃的な、積極的な", unit: 135 },
+  { word: "hostile", meaning: "敵意のある、反抗的な", unit: 135 },
+  { word: "miserable", meaning: "悲惨な、とても不幸な", unit: 135 },
+  { word: "exceed", meaning: "〜を超える、上回る", unit: 135 },
+  { word: "proceed", meaning: "進む、続行する", unit: 135 },
+  { word: "precede", meaning: "〜に先行する、〜に先立つ", unit: 135 },
+  { word: "vivid", meaning: "鮮やかな、生き生きとした", unit: 136 },
+  { word: "elaborate", meaning: "精巧な、手の込んだ", unit: 136 },
+  { word: "steady", meaning: "安定した、一定の", unit: 136 },
+  { word: "beneficial", meaning: "有益な、ためになる", unit: 136 },
+  { word: "decent", meaning: "まともな、きちんとした", unit: 136 },
+  { word: "neat", meaning: "きちんとした、手際のよい", unit: 136 },
+  { word: "attractive", meaning: "魅力的な", unit: 136 },
+  { word: "prominent", meaning: "傑出した、目立つ", unit: 136 },
+  { word: "prompt", meaning: "迅速な、〜を促す", unit: 136 },
+  { word: "vague", meaning: "曖昧な、漠然とした", unit: 136 },
+  { word: "ambiguous", meaning: "曖昧な、複数の意味にとれる", unit: 136 },
+  { word: "harsh", meaning: "厳しい、過酷な", unit: 136 },
+  { word: "fragile", meaning: "壊れやすい、脆い", unit: 136 },
+  { word: "false", meaning: "誤った、偽の", unit: 137 },
+  { word: "fake", meaning: "偽物の、偽装した", unit: 137 },
+  { word: "odd", meaning: "奇妙な、奇数の", unit: 137 },
+  { word: "weird", meaning: "奇妙な、変な", unit: 137 },
+  { word: "brief", meaning: "短時間の、簡潔な", unit: 137 },
+  { word: "concise", meaning: "簡潔な、簡明な", unit: 137 },
+  { word: "genuine", meaning: "本物の、真実の", unit: 137 },
+  { word: "authentic", meaning: "本物の、確かな", unit: 137 },
+  { word: "abundant", meaning: "豊富な、大量の", unit: 137 },
+  { word: "affluent", meaning: "裕福な、豊富な", unit: 137 },
+  { word: "faint", meaning: "かすかな、気を失う", unit: 137 },
+  { word: "dim", meaning: "薄暗い、ぼんやりした", unit: 137 }
+];
+
+let mistakes = JSON.parse(localStorage.getItem("vocab_mistakes") || "{}");
+let quizList = [];
+let currentIdx = 0;
+let score = 0;
+let timer = null;
+let timeLeft = 0;
+let timeLimit = 10;
+let isAnswered = false;
+let sessionMistakes = [];
+
+function startQuiz() {
+  const mode = document.getElementById("mode-select").value;
+  timeLimit = parseInt(document.getElementById("timer-select").value);
+  const countVal = document.getElementById("count-select").value;
+
+  let pool = [...vocabulary];
+  if (mode === "weak") {
+    const mistakeWords = Object.keys(mistakes);
+    pool = pool.filter(v => mistakeWords.includes(v.word));
+    if (pool.length === 0) {
+      alert("まだ間違えた記録のある単語がありません！");
+      return;
+    }
+  }
+
+  pool.sort(() => Math.random() - 0.5);
+  const count = countVal === "all" ? pool.length : Math.min(parseInt(countVal), pool.length);
+  quizList = pool.slice(0, count);
+
+  currentIdx = 0;
+  score = 0;
+  sessionMistakes = [];
+
+  showScreen("screen-quiz");
+  nextQuestion();
+}
+
+function nextQuestion() {
+  if (currentIdx >= quizList.length) {
+    finishQuiz();
+    return;
+  }
+
+  isAnswered = false;
+  const item = quizList[currentIdx];
+
+  document.getElementById("q-progress").innerText = `第 ${currentIdx + 1} 問 / ${quizList.length}問`;
+  document.getElementById("q-unit").innerText = `Unit ${item.unit}`;
+  document.getElementById("q-word").innerText = item.word;
+
+  // Check if previously mistaked
+  const alertEl = document.getElementById("q-alert");
+  if (mistakes[item.word]) {
+    alertEl.innerText = `⚠️ 前回間違えた単語です！（累積ミス: ${mistakes[item.word]}回）`;
+    alertEl.classList.remove("hidden");
+  } else {
+    alertEl.classList.add("hidden");
+  }
+
+  // Generate Options
+  let dummy = vocabulary
+    .filter(v => v.meaning !== item.meaning)
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 3)
+    .map(v => v.meaning);
+  let options = [item.meaning, ...dummy].sort(() => Math.random() - 0.5);
+
+  const optsDiv = document.getElementById("q-options");
+  optsDiv.innerHTML = "";
+  options.forEach(opt => {
+    const btn = document.createElement("button");
+    btn.className = "opt-btn";
+    btn.innerText = opt;
+    btn.onclick = () => handleAnswer(opt, item.meaning, btn);
+    optsDiv.appendChild(btn);
+  });
+
+  // Timer setup
+  if (timeLimit > 0) {
+    timeLeft = timeLimit;
+    document.getElementById("q-timer").innerText = `${timeLeft}s`;
+    clearInterval(timer);
+    timer = setInterval(() => {
+      timeLeft--;
+      document.getElementById("q-timer").innerText = `${timeLeft}s`;
+      if (timeLeft <= 0) {
+        clearInterval(timer);
+        handleAnswer(null, item.meaning, null); // 時間切れは誤答
+      }
+    }, 1000);
+  } else {
+    document.getElementById("q-timer").innerText = "";
+  }
+}
+
+function handleAnswer(selected, correct, btn) {
+  if (isAnswered) return;
+  isAnswered = true;
+  clearInterval(timer);
+
+  const item = quizList[currentIdx];
+  const allBtns = document.querySelectorAll(".opt-btn");
+
+  if (selected === correct) {
+    score++;
+    if (btn) btn.classList.add("correct");
+    // 正解したらミスカウントを1減らす（またはクリア）
+    if (mistakes[item.word]) {
+      mistakes[item.word]--;
+      if (mistakes[item.word] <= 0) delete mistakes[item.word];
+    }
+  } else {
+    if (btn) btn.classList.add("wrong");
+    // 時間切れまたは不正解の処理
+    allBtns.forEach(b => {
+      if (b.innerText === correct) b.classList.add("correct");
+    });
+    
+    // 記録保存
+    mistakes[item.word] = (mistakes[item.word] || 0) + 1;
+    sessionMistakes.push(item);
+  }
+
+  // ローカルストレージ更新
+  localStorage.setItem("vocab_mistakes", JSON.stringify(mistakes));
+
+  setTimeout(() => {
+    currentIdx++;
+    nextQuestion();
+  }, 1200);
+}
+
+function finishQuiz() {
+  showScreen("screen-result");
+  document.getElementById("res-score").innerText = `${score} / ${quizList.length}`;
+
+  const box = document.getElementById("res-mistakes-box");
+  if (sessionMistakes.length > 0) {
+    let html = "<strong>今回間違えた単語:</strong><ul style='padding-left:1.2rem; margin-top:0.3rem;'>";
+    sessionMistakes.forEach(m => {
+      html += `<li><strong>${m.word}</strong>: ${m.meaning}</li>`;
+    });
+    html += "</ul>";
+    box.innerHTML = html;
+  } else {
+    box.innerHTML = "<p style='color:var(--correct); font-weight:bold;'>全問正解！素晴らしいです！</p>";
+  }
+}
+
+function showHistory() {
+  showScreen("screen-history");
+  const content = document.getElementById("history-content");
+  const mistakeKeys = Object.keys(mistakes);
+
+  if (mistakeKeys.length === 0) {
+    content.innerHTML = "<p>現在、苦手（ミスした）単語はありません！</p>";
+    return;
+  }
+
+  let html = "";
+  vocabulary.forEach(v => {
+    if (mistakes[v.word]) {
+      html += `
+        <div class="history-item">
+          <div><strong>${v.word}</strong> (${v.meaning})</div>
+          <div class="wrong-tag">ミス ${mistakes[v.word]} 回</div>
+        </div>`;
+    }
+  });
+  content.innerHTML = html;
+}
+
+function clearHistory() {
+  if (confirm("過去の間違い記録をすべてリセットしますか？")) {
+    mistakes = {};
+    localStorage.removeItem("vocab_mistakes");
+    showHistory();
+  }
+}
+
+function showScreen(id) {
+  ["screen-top", "screen-quiz", "screen-result", "screen-history"].forEach(s => {
+    document.getElementById(s).classList.add("hidden");
+  });
+  document.getElementById(id).classList.remove("hidden");
+}
+
+function backToTop() {
+  showScreen("screen-top");
+}
+</script>
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js")
+      .catch(error => console.error(error));
+  });
+}
+</script>
+</body>
+</html>
+
